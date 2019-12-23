@@ -143,6 +143,7 @@ We implement PMCMC to estimate the parameters from the observed data $\{C_1,C_2,
 
 The SMC part of PMCMC starts off with a set of initial particles all corresponding to the initial state $S(0)=999, I(0)=1, R(0)=0$. For each time step $n$, the time evolution of the stochastic SIR model is simulated for each particle. Then the particles are weighted by the incremental likelihood and resampled to yield the samples that approximate the total likelihood. In the MCMC part, the parameter values are updated by the Metropolis Hastings algorithm based on the approximated likelihood.
 
+
 ```{r stochSIR-pmcmc}
 # Stepwise likelihood compuation and MCMC
  simulateSIR<-function(n, SIRobj){return(list(S=S,I=I,R=R))}
