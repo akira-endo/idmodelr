@@ -20,11 +20,26 @@ knitr::opts_chunk$set(
 ```
 
 ## Introduction
-This vignette is to introduce to the {idmodelr} package users a simple use example of the particle Markov-chain Monte Carlo (PMCMC) algorithm.
+This vignette is to introduce to the {idmodelr} package users a simple use example of the particle Markov-chain Monte Carlo (PMCMC) algorithm. We take simple deterministic/stochastic Susceptible-Infectious-Recovered (SIR) models with partial observation as model cases and show how the models are coupled with PMCMC for efficient parameter estimation.
 
-* Brief overview of PMCMC (including the hidden Markov process; HMP)
-* Contents covered in this vignette
-* Related resources
+Infectious disease modelling often involves handling of time-series datasets with partial (or modified) observation. A familiar example of the partial observation is underreporting, where only a certain fraction of infected individuals are identified and recorded in the dataset. One can account for the observation processes by explicitly incorporating them into the model, but this approach can lead to a particular class of model called "hidden Markov process (HMP)", whose likelihood is usually intractable.
+
+HMPs are typically represented as a Markov process with hidden inner states and its observation. Namely, the hidden variable $x_t$ evolves over time according to the time-evolution process $f$ and only $y_t$, the observed variable subject to the observation process $g$, is available as the model output.
+
+$$\begin{matrix}
+x_t & \sim & f(x_t;x_{t-1}) \\
+y_t &\sim &g(y_t;x_t)
+\end{matrix}
+$$
+
+The likelihood of this HMP given the data $\{y_1,y_2,...,y_T\}$ should theoretically be obtained by integrating out hidden variables $x_t$'s; however, this integration is computationally too heavy in practice due to high dimensionality.
+
+$$
+\mathcal L=\int\int...\int \left( p(x_1)g(y_1;x_1)\sum_{t=2}^T {f(x_t;x_{t-1})g(y_t;x_t)} \right) dx_1dx_2...dx_T.
+$$
+PMCMC employs the sequential Monte Carlo (SMC) to approximate this likelihood for better efficiency. The posterior distributions of $x_t$'s are represented by a set of samples (referred to as "particles"), which is sequentially sampled for $t=1,2,...,T$. For each time step $t$, SMC simulates the current state $\{x_t\}$ based on the previous state samples $\{x_{t-1}\}$ and weight them based on the stepwise likelihood $g(y_t;x_t)$, so that the resulting samples provide a Monte Carlo integration. The model parameters are then searched using MCMC based on the approximated likelihood.
+
+For further details and formal introduction to the PMCMC method, see [Endo et al. (2019)](https://doi.org/10.1016/j.epidem.2019.100363).
 
 ##  Deterministic SIR model
 First, we take the determinisitic SIR model as an example. Although PMCMC is not necessary to fit the deterministic SIR model to data because the likelihood can be directly computed, we will introduce it for a comparison with the stochastic SIR model example later, which PMCMC is suited for.
