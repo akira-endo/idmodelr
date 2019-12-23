@@ -100,7 +100,7 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co">#library(idmodelr)</span></code></pre></div>
 <div id="introduction" class="section level2">
 <h2>Introduction</h2>
-<p>This vignette is to introduce to the {idmodelr} package users a simple use example of the particle Markov-chain Monte Carlo (PMCMC) algorithm. We take simple deterministic/stochastic Susceptible-Infectious-Recovered (SIR) models with partial observation as model cases and show how the models are coupled with PMCMC for efficient parameter estimation.</p>
+<p>This vignette is to introduce to the {idmodelr} package users a simple use example of the particle Markov-chain Monte Carlo (PMCMC) algorithm. We take simple deterministic/stochastic epidemic models with partial observation as model cases and show how the models are coupled with PMCMC for efficient parameter estimation.</p>
 <p>Infectious disease modelling often involves handling of time-series datasets with partial (or modified) observation. A familiar example of the partial observation is underreporting, where only a certain fraction of infected individuals are identified and recorded in the dataset. One can account for the observation processes by explicitly incorporating them into the model, but this approach can lead to a particular class of model called “hidden Markov process (HMP)”, whose likelihood is usually intractable.</p>
 <p>HMPs are typically represented as a Markov process with hidden inner states and its observation. Namely, the hidden variable <span class="math inline">\(x_t\)</span> evolves over time according to the time-evolution process <span class="math inline">\(f\)</span> and only <span class="math inline">\(y_t\)</span>, the observed variable subject to the observation process <span class="math inline">\(g\)</span>, is available as the model output.</p>
 <p><span class="math display">\[\begin{matrix}
@@ -116,10 +116,10 @@ y_t &amp;\sim &amp;g(y_t;x_t)
 </div>
 <div id="deterministic-sir-model" class="section level2">
 <h2>Deterministic SIR model</h2>
-<p>First, we take the determinisitic SIR model as an example. Although PMCMC is not necessary to fit the deterministic SIR model to data because the likelihood can be directly computed, we will introduce it for a comparison with the stochastic SIR model example later, which PMCMC is suited for.</p>
+<p>First, we take the determinisitic Susceptible-Infectious-Recovered (SIR) model as an example. Although PMCMC is not necessary to fit the deterministic SIR model to data because the likelihood can be directly computed, we will introduce it for a comparison with the stochastic SIR model example later, which PMCMC is better suited for.</p>
 <div id="model-specifications" class="section level3">
 <h3>Model specifications</h3>
-<p>Susceptible-Infectious-Recovered (SIR) model is a simple compartmental model widely used in infectious disease epidemiology. The model categorises the population into three classes: <span class="math inline">\(S\)</span> (not yet infected but at risk), <span class="math inline">\(I\)</span> (infected and currently infectious) and <span class="math inline">\(R\)</span> (previously infected but not infectious anymore), and characterises the transitions between the classes by a set of ordinary differential equations.</p>
+<p>The SIR model is a simple compartmental model widely used in infectious disease epidemiology. The model categorises the population into three classes: <span class="math inline">\(S\)</span> (not yet infected but at risk), <span class="math inline">\(I\)</span> (infected and currently infectious) and <span class="math inline">\(R\)</span> (previously infected but not infectious anymore), and characterises the transitions between the classes by a set of ordinary differential equations.</p>
 <p><span class="math display">\[\begin{cases}
 \frac{d}{dt}S(t)=-\beta S(t)I(t) \\
 \frac{d}{dt}I(t)=\beta S(t)I(t) - \gamma I(t) \\
@@ -129,46 +129,76 @@ y_t &amp;\sim &amp;g(y_t;x_t)
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># deterministic SIR model by {idmodelr}</span>
 <span class="co"># plot the epicurve</span></code></pre></div>
 <p>However, we usually do not observe infections on continuous time: outbreak data is usually reported as incidence on discrete time steps (e.g. weekly case counts). Therefore, we need to assume certain obervation processes when we fit the model to the observed data.</p>
-<p>One of the options is to assume the reported number of cases follows a Poisson distribution whose mean is equal to the ascertainment probability <span class="math inline">\(p\)</span> times the cumulative amount of the newly-infected (i.e., inflow into the <span class="math inline">\(I\)</span> compartment) in SIR model. Here we assume that <span class="math inline">\(p\)</span> is a known constant. Let <span class="math inline">\(C_n\)</span> be the number of cases observed over the period between <span class="math inline">\(t=t_{n-1}\)</span> and <span class="math inline">\(t=t_{n}\)</span>. We then get</p>
+<p>One of the options is to assume the reported number of cases follows a Poisson distribution whose mean is equal to the ascertainment probability <span class="math inline">\(p\)</span> times the cumulative amount of the newly-infected (i.e., inflow into the <span class="math inline">\(I\)</span> compartment) in SIR model. Here we assume that <span class="math inline">\(p\)</span> is a known constant. Let <span class="math inline">\(C_n\)</span> be the number of cases observed over the period between <span class="math inline">\(t=T_{n-1}\)</span> and <span class="math inline">\(t=T_{n}\)</span>. We then get</p>
 <p><span class="math display">\[ \begin{matrix}
-C_n &amp; \sim &amp; \operatorname{Pois}(p\lambda_n), \\
-\lambda_n &amp; = &amp; \int_{t_{n-1}}^{t_{n}}\beta I(t)S(t)dt \\
-&amp; = &amp; S(t_{n-1})-S(t_{n}). \\
-%&amp; = &amp; S(t_{n-1})\left[1-\exp\left(-\int_{t_{n-1}}^{t_{n}}\beta I(t)dt\right)\right]
+C_n &amp; \sim &amp; \operatorname{Pois}(pc_n), \\
+c_n &amp; = &amp; \int_{T_{n-1}}^{T_{n}}\beta I(t)S(t)dt \\
+&amp; = &amp; S(T_{n-1})-S(T_{n}). \\
+%&amp; = &amp; S(T_{n-1})\left[1-\exp\left(-\int_{T_{n-1}}^{T_{n}}\beta I(t)dt\right)\right]
 \end{matrix}
 \]</span></p>
-<p>We can consider this system as an HMP. For discrete time steps <span class="math inline">\(n=1,2,...,N\)</span>, <span class="math inline">\(S(t_n)\)</span>, <span class="math inline">\(I(t_n)\)</span> and <span class="math inline">\(R(t_n)\)</span> constitute the (hidden) states of the HMP. The ODEs provide the time-evolution process and the Poisson distributions are the observation process.</p>
+<p>We can consider this system as an HMP. For discrete time steps <span class="math inline">\(n=1,2,...,N\)</span>, <span class="math inline">\(S(T_n)\)</span>, <span class="math inline">\(I(T_n)\)</span> and <span class="math inline">\(R(T_n)\)</span> constitute the (hidden) states of the HMP. The ODEs provide the time-evolution process and the Poisson distributions are the observation process.</p>
 <p>Although we introduced PMCMC as an inference tool for HMPs, we do not need to use PMCMC for this deterministic setting because the likelihood is directly available without particle approximation. Given parameters <span class="math inline">\(\beta\)</span> and <span class="math inline">\(\gamma\)</span>, the likelihood of observing <span class="math inline">\(C_1, C_2, ..., C_N\)</span> cases is computed as below.</p>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># Likelihood for the deterministic SIR model</span></code></pre></div>
 <p>Parameters can be estimated with this likelihood; e.g., by the maximum likelihood estimation or Bayesian posterior sampling.</p>
 </div>
 <div id="model-fitting-by-mcmc" class="section level3">
 <h3>Model fitting by MCMC</h3>
-<p>In this section, we show how the deterministic SIR model can be fitted to observed data. For better comparison with the stochastic SIR model case in the later section, we incrementally evaluate the likelihood by following time steps rather than in one shot. Here, <span class="math inline">\(\operatorname{getSIR}(n)\)</span> returns the hidden state variables at step <span class="math inline">\(n\)</span> (<span class="math inline">\(S(t_n)\)</span>, <span class="math inline">\(I(t_n)\)</span> and <span class="math inline">\(R(t_n)\)</span>) and <span class="math inline">\(\operatorname{observe}(C_n,\lambda_n,p)\)</span> gives the incremental likelihood of observing <span class="math inline">\(C_n\)</span> cases given <span class="math inline">\(\lambda_n\)</span> and <span class="math inline">\(p\)</span>. Assuming improper uniform priors on the positive real line, MCMC is implemented targeting the likelihood function.</p>
+<p>In this section, we show how the deterministic SIR model can be fitted to the observed data. For better comparison with the stochastic SIR model case in the later section, we incrementally evaluate the likelihood by following time steps rather than in one shot. Here, <code>getSIR(n)</code> returns the hidden state variables at step <span class="math inline">\(n\)</span> (i.e. <span class="math inline">\(S(t_n)\)</span>, <span class="math inline">\(I(t_n)\)</span> and <span class="math inline">\(R(t_n)\)</span>) and <code>observe(C_n, lambda_n, p)</code> gives the incremental likelihood of observing <span class="math inline">\(C_n\)</span> cases given <span class="math inline">\(\lambda_n\)</span> and <span class="math inline">\(p\)</span>. Assuming improper uniform priors on the positive real line, MCMC is implemented targeting the likelihood function.</p>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># Stepwise likelihood compuation and MCMC</span>
- getSIR&lt;-<span class="cf">function</span>(n, SIRobj){<span class="kw">return</span>(<span class="kw">list</span>(<span class="dt">S=</span>S,<span class="dt">I=</span>I,<span class="dt">R=</span>R))}
- observe&lt;-<span class="cf">function</span>(C_n,lambda_n,p){<span class="kw">return</span>(logl)}
-<span class="co">#</span>
+getSIR &lt;-<span class="st"> </span><span class="cf">function</span>(n, SIRobj) {
+    <span class="kw">return</span>(<span class="kw">list</span>(<span class="dt">S =</span> S, <span class="dt">I =</span> I, <span class="dt">R =</span> R))
+}
+observe &lt;-<span class="st"> </span><span class="cf">function</span>(C_n, c_n, p) {
+    <span class="kw">return</span>(logl)
+}
 <span class="co"># --MCMC implementation--</span></code></pre></div>
-<p>Because the time evolution process is deterministic, the incremental likelihood is computed without random fluctuations; <span class="math inline">\(\operatorname{getSIR}(n)\)</span> returns the fixed values and therefore the fixed incremental likelihood <span class="math inline">\(\operatorname{observe}(C_n,\lambda_n,p)\)</span>. One the other hand, the time evolution randomly fluctuates in the stochastic SIR model (detailed in the next section). A possible approach to accounting for the stochasticity is to use many samples and approximate the likelihood by averaging over the samples, which is the key idea of PMCMC.</p>
+<p>Because the time evolution process is deterministic, the incremental likelihood is computed without random fluctuations; <code>getSIR(n)</code> returns the fixed values and therefore the fixed incremental likelihood <code>observe(C_n, c_n, p)</code>. One the other hand, the time evolution randomly fluctuates in the stochastic SIR model (detailed in the next section). A possible approach to accounting for the stochasticity is to use many samples and approximate the likelihood by averaging over the samples, which is the key idea of PMCMC.</p>
 </div>
 </div>
 <div id="stochastic-sir-model" class="section level2">
 <h2>Stochastic SIR model</h2>
+<p>Next, we show the PMCMC implementation for the stochastic SIR model, which constitutes a typical HMP with an intractable likelihood function.</p>
 <div id="model-specifications-1" class="section level3">
 <h3>Model specifications</h3>
+<p>We adopt the Gillespie algorithm to incorporate stochasticity into the SIR model. The three variables <span class="math inline">\(S\)</span>, <span class="math inline">\(I\)</span> and <span class="math inline">\(R\)</span>, are now all considered as integers, and we assume that each individual transitions between compartment randomly according to the following rates:</p>
+<p><span class="math display">\[\begin{matrix}
+r_{S\rightarrow I}&amp;=&amp;\beta I(t), \\
+r_{I\rightarrow R}&amp;=&amp;\gamma.
+\end{matrix}\]</span> Assuming that transitions of more than one individuals do not happen exactly at the same time, we can characterise the time evolution of the stochastic SIR model as a random sequence of the two events:</p>
 <ul>
-<li>Description of stochastic SIR model (referencing <a href="http://epirecip.es/epicookbook/chapters/sir-stochastic-discretestate-continuoustime/r">Epirecipes</a>)</li>
-<li>An {idmodelr} code for stochastic SIR drawing multiple realisations of an epidemic</li>
-<li>Likelihood function for given data</li>
-<li>Difficulties around directly computing likelihood of stochastic SIR</li>
+<li>“New infection”: <span class="math inline">\((S,I,R)\rightarrow (S-1,I+1,R)\)</span></li>
+<li>“New recovery”: <span class="math inline">\((S,I,R)\rightarrow (S,I-1,R+1)\)</span></li>
 </ul>
+<p>Because the number of individuals in each compartment stays constant between the successive two events, the transition rates are also constant meanwhile. Note that the next earliest happening of an event is the earlier of either “one of the <span class="math inline">\(S\)</span> susceptible individuals gets infected” or “one of the <span class="math inline">\(I\)</span> infectious individuals recovers”. The time between the two successive events (where the time of the first event is <span class="math inline">\(t_k\)</span>) therefore follows an exponential distribution with the rate <span class="math display">\[r_{\mathrm{Next}}=r_{S\rightarrow I}S(t_k)+r_{I\rightarrow R}I(t_k)=\beta S(t_k)I(t_k)+\gamma I(t_k).\]</span></p>
+<p>The Gillespie algorithm simulates the epidemic by the following steps. For complete program code examples, see <a href="http://epirecip.es/epicookbook/chapters/sir-stochastic-discretestate-continuoustime/r">epirecipes</a> or <a href="https://github.com/seabbs/idmodelr/tree/master/R">{idmodelr} package repository</a>.</p>
+<ol style="list-style-type: decimal">
+<li>Start with the initial condition <span class="math inline">\(S(0),I(0),R(0), t_0=0.\)</span></li>
+<li>For <span class="math inline">\(k=1,2,...,\)</span> sample the time of the <span class="math inline">\(k\)</span>-th event: <span class="math display">\[t_k\sim \mathrm{Exp}(r_{\mathrm{Next}}).\]</span></li>
+<li>Randomly determine whether the <span class="math inline">\(k\)</span>-th event is “new infection” or “new recovery” according to the relative ratio between <span class="math inline">\(r_{S\rightarrow I}\)</span> and <span class="math inline">\(r_{I\rightarrow R}\)</span>: <span class="math display">\[\begin{matrix}
+p(``\text{new infection}&quot;)&amp;=&amp; \frac{r_{S\rightarrow I}S(t_{k-1})}{r_{S\rightarrow I}S(_{k-1})+r_{I\rightarrow R}I(_{k-1})}, \\
+p(``\text{new recovery}&quot;)&amp;=&amp; \frac{r_{I\rightarrow R}S(_{k-1})}{r_{S\rightarrow I}S(_{k-1})+r_{I\rightarrow R}I(_{k-1})}.
+\end{matrix}
+\]</span></li>
+<li>Update the state variables and obtain <span class="math inline">\((S(t_k),I(t_k),R(t_k))\)</span> according to the type of event.</li>
+<li>Repeat 2-4 until <span class="math inline">\(t_k\)</span> exceed the simulation stop time <span class="math inline">\(t_k\)</span>.</li>
+</ol>
+<p>The output of the Gillespie algorithm,<span class="math inline">\(\{S(t_k),I(t_k),R(t_k)\}\)</span> for <span class="math inline">\(k=1,2,...\)</span>, can then be translated into a continuous-time epidemic time series. {idmodelr} supports epidemic simulations with the Stochastic SIR model.</p>
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># Stochastic SIR simulation by {idmodelr} plot the epicurve</span></code></pre></div>
+<p>As we did for the deterministic SIR model, we can incorporate an observation process (underreporting) into the model. <span class="math inline">\(C_n\)</span>, the number of observed cases between time <span class="math inline">\(T_{n-1}\)</span> and <span class="math inline">\(T_n\)</span>, is given as <span class="math display">\[\begin{matrix}
+C_n&amp;\sim&amp;\operatorname{Bin}(c_n,p), \\
+c_n&amp;=&amp;S(T_{n-1})-S(T_n),
+\end{matrix}\]</span> where <span class="math inline">\(c_n\)</span> is the number of “new infection” event occurrences between time <span class="math inline">\(T_{n-1}\)</span> and <span class="math inline">\(T_n\)</span>. The system consisting of the hidden states <span class="math inline">\(S(T_n), I(T_n),R(T_n)\)</span> and <span class="math inline">\(c_n\)</span> for discrete time steps <span class="math inline">\(n=1,2,...,N\)</span> is an HMP. Unlike the case of deterministic SIR model, the likelihood function for observed data <span class="math inline">\(\{C_1,C_2,...,C_N\}\)</span> is intractable and PMCMC needs to be employed to efficiently estimate the model parameters with the approximated likelihood.</p>
 </div>
 <div id="model-fitting-by-pmcmc" class="section level3">
 <h3>Model fitting by PMCMC</h3>
-<ul>
-<li>Parameter estimation with PMCMC. Stochastic SIR model needs to provide a stepwise-simulation functionality; that is, time evolution between time <span class="math inline">\(t_{n-1}\)</span> and <span class="math inline">\(t_n\)</span> will have to be simulated for each particle with different state variables (since the sthocastic SIR model has the memoryless property, this should work if the model runs from given initial values <span class="math inline">\(S\)</span>, <span class="math inline">\(I\)</span> and <span class="math inline">\(R\)</span> for specified time period).</li>
-</ul>
+<p>We implement PMCMC to estimate the parameters from the observed data <span class="math inline">\(\{C_1,C_2,...,C_N\}\)</span>. The function <code>simulateSIR_stoch(n)</code> simulates the stochastic SIR model from <span class="math inline">\(t=T_{n-1}\)</span> to <span class="math inline">\(T_n\)</span> and <code>observe_stoch(C_n, c_n, p)</code> gives the incremental likelihood corresponding to the observation <span class="math inline">\(C_n\)</span>. Improper uniform priors on the positive real line are assumed.</p>
+<p>The SMC part of PMCMC starts off with a set of initial particles all corresponding to the initial state <span class="math inline">\(S(0)=999, I(0)=1, R(0)=0\)</span>. For each time step <span class="math inline">\(n\)</span>, the time evolution of the stochastic SIR model is simulated for each particle. Then the particles are weighted by the incremental likelihood and resampled to yield the samples that approximate the total likelihood. In the MCMC part, the parameter values are updated by the Metropolis Hastings algorithm based on the approximated likelihood.</p>
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># Stepwise likelihood compuation and MCMC</span>
+ simulateSIR&lt;-<span class="cf">function</span>(n, SIRobj){<span class="kw">return</span>(<span class="kw">list</span>(<span class="dt">S=</span>S,<span class="dt">I=</span>I,<span class="dt">R=</span>R))}
+ observe&lt;-<span class="cf">function</span>(C_n,c_n,p){<span class="kw">return</span>(<span class="kw">dbinom</span>(C_n,c_n,p,<span class="dt">log=</span>T))}
+<span class="co">#</span>
+<span class="co"># --PMCMC implementation--</span></code></pre></div>
 </div>
 </div>
 
