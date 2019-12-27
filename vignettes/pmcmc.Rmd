@@ -16,7 +16,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-#library(idmodelr)
+library(idmodelr)
 ```
 
 ## Introduction
@@ -57,12 +57,34 @@ SIR model runs on continuous time and we can get the state of each compartment a
 
 ```{r deterministicSIR}
 # deterministic SIR model by {idmodelr}
+simulate_detSIR<-function(betatau,N,times){
+  parameters <- data.frame(
+    beta = betatau[1], ##Transmission rate = contact rate * transmission probablity
+    tau = betatau[2] ## Rate recovcery = 1 / duration of infection
+  )
+  inits <- data.frame(
+    S = N-1,
+    I = 1,
+    R = 0
+  )
+  traj <- simulate_model(model = SIR_ode,
+                       sim_fn = solve_ode,
+                       inits = inits,
+                       params = parameters,
+                       times = times)
+  return(traj)
+}
+
+times <- seq(0, 10, 0.1)
+traj<-simulate_detSIR(c(3,1),1000,times)
+
 # plot the epicurve
+plot_model(traj, facet = F)
 ```
 
 However, we usually do not observe infections on continuous time: outbreak data is usually reported as incidence on discrete time steps (e.g. weekly case counts). Therefore, we need to assume certain obervation processes when we fit the model to the observed data.
 
-One of the options is to assume the reported number of cases follows a Poisson distribution whose mean is equal to the ascertainment probability $p$ times the cumulative amount of the newly-infected (i.e., inflow into the $I$ compartment) in SIR model. Here we assume that $p$ is a known constant. Let $C_n$ be the number of cases observed over the period between $t=T_{n-1}$ and $t=T_{n}$. We then get 
+One of the options is to assume the reported number of cases follows a Poisson distribution whose mean is equal to the ascertainment probability $p$ times the cumulative amount of the newly-infected (i.e., inflow into the $I$ compartment) in SIR model. Here we assume $p$ is an unknown constant. Let $C_n$ be the number of cases observed over the period between $t=T_{n-1}$ and $t=T_{n}$. We then get 
 
 $$ \begin{matrix}
 C_n & \sim & \operatorname{Pois}(pc_n), \\
@@ -76,20 +98,55 @@ We can consider this system as an HMP. For discrete time steps $n=1,2,...,N$, $S
 
 Although we introduced PMCMC as an inference tool for HMPs, we do not need to use PMCMC for this deterministic setting because the likelihood is directly available without particle approximation. Given parameters $\beta$ and $\gamma$, the likelihood of observing $C_1, C_2, ..., C_N$ cases is computed as below.
 
-```{r detSIR-likelihood}
+```{r detSIR-likelihood,tidy=TRUE}
 # Likelihood for the deterministic SIR model
+C_n<-c(3,18,91,96,42,17,7,2,1,1) # Observed case counts
+T_n<-0:10*10+1 # Time frame of observation
+getc_n<-function(traj,T_n){
+  S_T<-pmax(unlist(traj[,"S"])[T_n],0)
+  c_n<-(S_T[-length(S_T)]-S_T[-1])
+  return(c_n)
+}
+
+logl_detSIR<-function(parms,C_n){
+  beta<-parms[1]
+  tau<-parms[2]
+  p<-parms[3]
+  traj<-simulate_detSIR(c(beta,tau),1000,times)
+  c_n<-getc_n(traj,T_n)
+  logl<-sum(dpois(C_n,p*c_n,log=T))
+  return(logl)
+}
 ```
 Parameters can be estimated with this likelihood; e.g., by the maximum likelihood estimation or Bayesian posterior sampling.
 
+```{r mle, tidy=TRUE}
+# Maximum likelihood estimation. The true parameter values were (beta = 3.0, tau = 1.0, p = 0.3).
+optim(numeric(3)+0.5,logl_detSIR,lower=numeric(3)+0.1,upper=c(5,5,1),method="L-BFGS",C_n=C_n,control = list(fnscale=-1))
+```
+
 ### Model fitting by MCMC
-In this section, we show how the deterministic SIR model can be fitted to the observed data. For better comparison with the stochastic SIR model case in the later section, we incrementally evaluate the likelihood by following time steps rather than in one shot. Here, ``getSIR(n)`` returns the hidden state variables at step $n$ (i.e. $S(t_n)$, $I(t_n)$ and $R(t_n)$) and ``observe(C_n, lambda_n, p)`` gives the incremental likelihood of observing $C_n$ cases given $\lambda_n$ and $p$. Assuming improper uniform priors on the positive real line, MCMC is implemented targeting the likelihood function.
+In this section, we show how the deterministic SIR model can be fitted to the observed data. For better comparison with the stochastic SIR model case in the later section, we incrementally evaluate the likelihood by following time steps rather than in one shot. Here, ``getSIR(n)`` returns the hidden state variables at step $n$ (i.e. $S(t_n)$, $I(t_n)$ and $R(t_n)$) and ``observe(C_n, c_n, p)`` gives the incremental likelihood of observing $C_n$ cases given $\lambda_n$ and $p$. Assuming improper uniform priors on the positive real line, MCMC is implemented targeting the likelihood function.
 
 ```{r detSIR-mcmc,tidy=TRUE}
 # Stepwise likelihood compuation and MCMC
- getSIR<-function(n, SIRobj){return(list(S=S,I=I,R=R))}
- observe<-function(C_n,c_n,p){return(logl)}
+getSIR<-function(n,SIRtraj){
+  return(list(S=S,I=I,R=R))
+}
+observe<-function(C_n,c_n,p){return(logl)}
+
 #
-# --MCMC implementation--
+#--MCMC implementation--
+library(LaplacesDemon)
+n_iter<-1000
+chain<-matrix(0,n_iter,3)
+
+parms=c(1,1,0.5)
+for(i in 1:n_iter){
+  parms=parms+rnorm(3,0,0.1)
+  parms=interval(parms,0,1)
+  
+}
 ```
 
 Because the time evolution process is deterministic, the incremental likelihood is computed without random fluctuations; ``getSIR(n)`` returns the fixed values and therefore the fixed incremental likelihood ``observe(C_n, c_n, p)``. One the other hand, the time evolution randomly fluctuates in the stochastic SIR model (detailed in the next section).  A possible approach to accounting for the stochasticity is to use many samples and approximate the likelihood by averaging over the samples, which is the key idea of PMCMC.
