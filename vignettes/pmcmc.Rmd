@@ -55,12 +55,12 @@ $$\begin{cases}
 
 SIR model runs on continuous time and we can get the state of each compartment at given time $t$.
 
-```{r deterministicSIR}
+```{r deterministicSIR,tidy=TRUE,fig.width=5}
 # deterministic SIR model by {idmodelr}
 simulate_detSIR<-function(betatau,N,times){
   parameters <- data.frame(
-    beta = betatau[1], ##Transmission rate = contact rate * transmission probablity
-    tau = betatau[2] ## Rate recovcery = 1 / duration of infection
+    beta = betatau[1],
+    tau = betatau[2]
   )
   inits <- data.frame(
     S = N-1,
@@ -128,7 +128,7 @@ optim(numeric(3)+0.5,logl_detSIR,lower=numeric(3)+0.1,upper=c(5,5,1),method="L-B
 ### Model fitting by MCMC
 In this section, we show how the deterministic SIR model can be fitted to the observed data. For better comparison with the stochastic SIR model case in the later section, we incrementally evaluate the likelihood by following time steps rather than in one shot. Here, ``getSIR(n)`` returns the hidden state variables at step $n$ (i.e. $S(t_n)$, $I(t_n)$ and $R(t_n)$) and ``observe(C_n, c_n, p)`` gives the incremental likelihood of observing $C_n$ cases given $\lambda_n$ and $p$. Assuming improper uniform priors on the positive real line, MCMC is implemented targeting the likelihood function.
 
-```{r detSIR-mcmc,tidy=TRUE}
+```{r detSIR-mcmc,tidy=TRUE,fig.width=3}
 # Stepwise likelihood compuation and MCMC
 getSIR<-function(n,SIRtraj){
   t_n<-T_n[n+1]
@@ -163,7 +163,6 @@ Covar<-matrix(c(0.5,0.45,0.03,0.45,0.45,0.03,0.03,0.03,0.003),3) # Specified ad-
 set.seed(2020)
 chain<-LaplacesDemon(Model,Data,Initial.Values=c(1,1,0.5),Covar=Covar,Iterations=n_iter,Status=1000,Algorithm="RWM")
 chain$Summary2
-#par(mfrow=c(2,2))
 for(c in 1:3)plot(chain$Posterior1[,c],type="l",lty=1,col=c,xlab="Iterations",ylab = c("beta","tau","p")[c])
 
 ```
@@ -219,12 +218,27 @@ We implement PMCMC to estimate the parameters from the observed data $\{C_1,C_2,
 
 The SMC part of PMCMC starts off with a set of initial particles all corresponding to the initial state $S(0)=999, I(0)=1, R(0)=0$. For each time step $n$, the time evolution of the stochastic SIR model is simulated for each particle. Then the particles are weighted by the incremental likelihood and resampled to yield the samples that approximate the total likelihood. In the MCMC part, the parameter values are updated by the Metropolis Hastings algorithm based on the approximated likelihood.
 
+PMCMC for the stochastic SIR model works in the following steps:
+
+1. Set the initial value for the parameters $\theta_0=(\beta_0,\tau_0,p_0)$.
+2. For $m=1,2,...,$, draw the next parameter values $\theta_{m-1}$ from the proposal distribution.
+3. Run SMC with the proposed parameters $\theta_{m-1}$ to approximate the marginal likelihood $\mathcal L(\theta_{m})$ :
+    1. Let $x_n=(S_n,I_n,R_n)$. Initialise $J$ particles $\{x_0^{(j)}\}(j=1,2,...,J)$ as $x_0^{(j)}=(S_0,I_0,R_0)=(999,1,0)$.
+    2. For $n=1,2,...,N$, draw the current states $x_n^{(j)}$ by simulating the stochastic SIR model (characterised by $\theta_m$) with the corresponding previous state $x_{n-1}^{(j)}$.
+    3. Calculate the weights for each particle $x_n^{(j)}$ as $w_n^{(j)}=\frac{g(y_n;x_n^{(j)})}{\sum_{j=1}^J g(y_n;x_n^{(j)})}$ (resample the particles/trajectories if necessary).
+    4. Repeat 2-3 to obtain the approximated marginal likelihood as $\hat L(\theta_m)=\sum_{n=1}^N\sum_{j=1}^Jw_n^{(j)}g(y_n;x_n^{(j)})$
+    
+4. Accept/reject the proposed parameters $\theta_{m-1}$ based on the comparison between $\hat L(\theta_m)$ and $\hat L(\theta_m)$
+5. Repeat 2-4 until convergence.
 
 ```{r stochSIR-pmcmc}
 # Stepwise likelihood compuation and MCMC
- simulateSIR<-function(n, SIRobj){return(list(S=S,I=I,R=R))}
- observe<-function(C_n,c_n,p){return(dbinom(C_n,c_n,p,log=T))}
+simulateSIR<-function(n, SIRobj){return(list(S=S,I=I,R=R))}
+observe<-function(C_n,c_n,p){
+  return(dbinom(C_n,c_n,p,log=T))
+}
 #
 # --PMCMC implementation--
+
 ```
 
