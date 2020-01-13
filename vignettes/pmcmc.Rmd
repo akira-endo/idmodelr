@@ -224,11 +224,11 @@ PMCMC for the stochastic SIR model works in the following steps:
 2. For $m=1,2,...,$, draw the next parameter values $\theta_{m-1}$ from the proposal distribution.
 3. Run SMC with the proposed parameters $\theta_{m-1}$ to approximate the marginal likelihood $\mathcal L(\theta_{m})$ :
     1. Let $x_n=(S_n,I_n,R_n)$. Initialise $J$ particles $\{x_0^{(j)}\}(j=1,2,...,J)$ as $x_0^{(j)}=(S_0,I_0,R_0)=(999,1,0)$.
-    2. For $n=1,2,...,N$, draw the current states $x_n^{(j)}$ by simulating the stochastic SIR model (characterised by $\theta_m$) with the corresponding previous state $x_{n-1}^{(j)}$.
-    3. Calculate the weights for each particle $x_n^{(j)}$ as $w_n^{(j)}=\frac{g(y_n;x_n^{(j)})}{\sum_{j=1}^J g(y_n;x_n^{(j)})}$ (resample the particles/trajectories if necessary).
-    4. Repeat 2-3 to obtain the approximated marginal likelihood as $\hat L(\theta_m)=\sum_{n=1}^N\sum_{j=1}^Jw_n^{(j)}g(y_n;x_n^{(j)})$
+    2. For $n=1,2,...,N$, draw the current states $x_n^{(j)}$ by simulating the stochastic SIR model (characterised by $\theta_m$) from the corresponding previous state $x_{n-1}^{(j)}$.
+    3. Calculate the weights for each particle $x_n^{(j)}$ proportionally to $g(y_n;x_n^{(j)})$, that is, $w_n^{(j)}=\frac{g(y_n;x_n^{(j)})}{\sum_{j=1}^J g(y_n;x_n^{(j)})}$ (resample the particles/trajectories if necessary).
+    4. Repeat 2-3 to obtain the approximated marginal likelihood by taking the average over the samples: $\hat L(\theta_m)=\sum_{n=1}^N\sum_{j=1}^Jw_n^{(j)}g(y_n;x_n^{(j)})$
     
-4. Accept/reject the proposed parameters $\theta_{m-1}$ based on the comparison between $\hat L(\theta_m)$ and $\hat L(\theta_m)$
+4. Accept/reject the proposed parameters $\theta_{m-1}$ based on the comparison between the likelihoods $\hat L(\theta_m)$ and $\hat L(\theta_{m-1})$
 5. Repeat 2-4 until convergence.
 
 ```{r stochSIR-pmcmc}
