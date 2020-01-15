@@ -75,3 +75,75 @@ solve_ode <- function(model = NULL, inits = NULL, params = NULL, times = NULL, a
 
   return(solved_ode)
 }
+
+# solve wrapper for stochastic model
+solve_stoch<-function(model = NULL, inits = NULL, params = NULL, times = NULL, as.data.frame = TRUE, ...){
+  if ("matrix" %in% class(params)) {
+    solved_stoch <- map(1:ncol(params), function(i) {
+      params_vect <- params[,i]
+      if ("matrix" %in% class(inits)) {
+        initial <- inits[, i]
+      }else{
+        initial <- inits
+      }
+      
+      solved_stoch <- simulate_GA(initial, times, model, params_vect, ...)
+      
+      if (as.data.frame) {
+        solved_stoch <- as.data.frame(solved_stoch)
+        solved_stoch <- as_tibble(solved_stoch)
+        if (ncol(params) != 1) {
+          solved_stoch$traj <- i
+        }
+      }
+      return(solved_stoch)
+    })
+    
+    if (as.data.frame) {
+      solved_stoch <- do.call(bind_rows, solved_stoch)
+    }
+  }else{
+    solved_stoch <- simulate_GA(inits, times, model, params, ...)
+    
+    if (as.data.frame) {
+      solved_stoch <- as.data.frame(solved_stoch)
+      solved_stoch <- as_tibble(solved_stoch)
+    }
+  }
+}
+
+# main func for stochastic simulation
+simulate_GA<-function(inits, times, stochmodel, params_vect, ...){
+  # Output matrix
+  out<-matrix(0,length(times),length(inits))
+  rownames(out)=times
+  colnames(out)=names(inits)
+  
+  ## Gillespi Algorithm
+  # Initialisation
+  tnow<-times[1]
+  xnow<-inits
+  rates<-stochmodel(tnow,xnow,params_vect)$rates
+  tnext<-tnow+suppressWarnings(rexp(1,sum(rates))) # time of the next transition
+  if(is.nan(tnext))tnext=Inf
+  
+  for(n in 1:length(times)){
+    tstep<-times[n]
+    while(tnext<=tstep){ # Gillespie iteration until t=tstep
+      tnow<-tnext
+      # update xnow
+      trans_num<-which(as.logical(rmultinom(1,1,rates)))
+      trans_from<-(trans_num-1)%/%nrow(rates)+1
+      trans_to<-(trans_num-1)%%nrow(rates)+1
+      xnow[trans_from]<-xnow[trans_from]-1
+      xnow[trans_to]<-xnow[trans_to]+1
+      
+      # update tnext
+      rates<-stochmodel(tnow,xnow,params_vect)$rates
+      tnext<-tnow+suppressWarnings(rexp(1,sum(rates))) # time of the next transition
+      if(is.nan(tnext))tnext=Inf
+    }
+    out[n,]<-xnow
+  }
+  cbind(time=times,out)
+}

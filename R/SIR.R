@@ -39,6 +39,34 @@ SIR_ode <- function(t, x, params) {
   })
 }
 
+SIR_stoch <- function(t, x, params) {
+  
+  ## Specify model compartments
+  S <- x[1]
+  I <- x[2]
+  R <- x[3]
+  
+  with(as.list(params),{
+    
+    ## Specify total population
+    N = S + I + R
+    
+    # # Derivative Expressions
+    # dS = - beta * S * I / N
+    # dI = beta * S * I / N - tau * I
+    # dR = tau * I
+    
+    # Transition rates
+    rates<-rbind(c(0,              0, 0),
+                 c(beta*S*I/N,     0, 0),
+                 c(0,          tau*I, 0))
+    
+    ## output
+    
+    list(rates=rates)
+  })
+}
+
 #' Susceptible-Infected-Recovered Model with Simple Demographics
 #'
 #' @inherit SIR_ode
