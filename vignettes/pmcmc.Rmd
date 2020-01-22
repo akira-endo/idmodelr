@@ -35,7 +35,7 @@ $$
 The likelihood of this HMP given the data $\{y_1,y_2,...,y_T\}$ should theoretically be obtained by integrating out hidden variables $x_t$'s; however, this integration is computationally too heavy in practice due to high dimensionality.
 
 $$
-\mathcal L=\int\int...\int \left( p(x_1)g(y_1;x_1)\sum_{t=2}^T {f(x_t;x_{t-1})g(y_t;x_t)} \right) dx_1dx_2...dx_T.
+\mathcal L=\int\int...\int \left( \sum_{t=1}^T {f(x_t;x_{t-1})g(y_t;x_t)} \right) dx_1dx_2...dx_T.
 $$
 PMCMC employs the sequential Monte Carlo (SMC) to approximate this likelihood for better efficiency. The posterior distributions of $x_t$'s are represented by a set of samples (referred to as "particles"), which is sequentially sampled for $t=1,2,...,T$. For each time step $t$, SMC simulates the current state $\{x_t\}$ based on the previous state samples $\{x_{t-1}\}$ and weight them based on the stepwise likelihood $g(y_t;x_t)$, so that the resulting samples provide a Monte Carlo integration. The model parameters are then searched using MCMC based on the approximated likelihood.
 
@@ -57,18 +57,18 @@ SIR model runs on continuous time and we can get the state of each compartment a
 
 ```{r deterministicSIR,tidy=TRUE,fig.width=5}
 # deterministic SIR model by {idmodelr}
-simulate_detSIR<-function(betatau,N,times){
+sim_outbreak<-function(betatau,init,times,model=SIR_ode,sim_fn=solve_ode){
   parameters <- data.frame(
     beta = betatau[1],
     tau = betatau[2]
   )
   inits <- data.frame(
-    S = N-1,
-    I = 1,
-    R = 0
+    S = init[1],
+    I = init[2],
+    R = init[3]
   )
-  traj <- simulate_model(model = SIR_ode,
-                       sim_fn = solve_ode,
+  traj <- simulate_model(model = model,
+                       sim_fn = sim_fn,
                        inits = inits,
                        params = parameters,
                        times = times)
@@ -76,7 +76,7 @@ simulate_detSIR<-function(betatau,N,times){
 }
 
 times <- seq(0, 10, 0.1)
-traj<-simulate_detSIR(c(3,1),1000,times)
+traj<-sim_outbreak(c(3,1),c(999,1,0),times)
 
 # plot the epicurve
 plot_model(traj, facet = F)
@@ -112,7 +112,7 @@ logl_detSIR<-function(parms,C_n){
   beta<-parms[1]
   tau<-parms[2]
   p<-parms[3]
-  traj<-simulate_detSIR(c(beta,tau),1000,times)
+  traj<-sim_outbreak(c(beta,tau),c(999,1,0),times)
   c_n<-getc_n(traj,T_n)
   logl<-sum(dpois(C_n,p*c_n,log=T))
   return(logl)
@@ -149,7 +149,7 @@ Model<-function(parms,Data){
   beta<-abs(parms[1])
   tau<-abs(parms[2])
   p<-interval(parms[3],0,1)
-  traj<-simulate_detSIR(c(beta,tau),1000,times)
+  traj<-sim_outbreak(c(beta,tau),c(999,1,0),times)
   prevS<-unlist(traj[1,"S"])
   logl<-0
   for(n in 1:10){
@@ -200,9 +200,15 @@ $$
 5. Repeat 2-4 until $t_k$ exceed the simulation stop time $t_k$.
 
 The output of the Gillespie algorithm,$\{S(t_k),I(t_k),R(t_k)\}$ for $k=1,2,...$, can then be translated into a continuous-time epidemic time series. {idmodelr} supports epidemic simulations with the Stochastic SIR model.
-```{r stochasticSIR, tidy=TRUE}
+```{r stochasticSIR, tidy=TRUE, fig.width=5}
+source("../R/SIR.R")
+source("../R/solve.R")
+library(purrr);library(tibble);library(dplyr)
+set.seed(2020)
 # Stochastic SIR simulation by {idmodelr}
+traj<-sim_outbreak(c(3,1),c(999,1,0),times,model=SIR_stoch,sim_fn=solve_stoch)
 # plot the epicurve
+plot_model(traj, facet = F)
 ```
 
 As we did for the deterministic SIR model, we can incorporate an observation process (underreporting) into the model. $C_n$, the number of observed cases between time $T_{n-1}$ and $T_n$, is given as
@@ -222,10 +228,10 @@ PMCMC for the stochastic SIR model works in the following steps:
 
 1. Set the initial value for the parameters $\theta_0=(\beta_0,\tau_0,p_0)$.
 2. For $m=1,2,...,$, draw the next parameter values $\theta_{m-1}$ from the proposal distribution.
-3. Run SMC with the proposed parameters $\theta_{m-1}$ to approximate the marginal likelihood $\mathcal L(\theta_{m})$ :
+3. Run SMC with the proposed parameters $\theta_{m-1}$ to compute the approximate likelihood $\hat L(\theta_{m})$ :
     1. Let $x_n=(S_n,I_n,R_n)$. Initialise $J$ particles $\{x_0^{(j)}\}(j=1,2,...,J)$ as $x_0^{(j)}=(S_0,I_0,R_0)=(999,1,0)$.
     2. For $n=1,2,...,N$, draw the current states $x_n^{(j)}$ by simulating the stochastic SIR model (characterised by $\theta_m$) from the corresponding previous state $x_{n-1}^{(j)}$.
-    3. Calculate the weights for each particle $x_n^{(j)}$ proportionally to $g(y_n;x_n^{(j)})$, that is, $w_n^{(j)}=\frac{g(y_n;x_n^{(j)})}{\sum_{j=1}^J g(y_n;x_n^{(j)})}$ (resample the particles/trajectories if necessary).
+    3. Calculate the weights for each particle $x_n^{(j)}$ proportionally to $g(y_n;x_n^{(j)})$, that is, $w_n^{(j)}=\frac{g(y_n;x_n^{(j)})}{\sum_{j=1}^J g(y_n;x_n^{(j)})}$ (and then resample the particles/trajectories if necessary).
     4. Repeat 2-3 to obtain the approximated marginal likelihood by taking the average over the samples: $\hat L(\theta_m)=\sum_{n=1}^N\sum_{j=1}^Jw_n^{(j)}g(y_n;x_n^{(j)})$
     
 4. Accept/reject the proposed parameters $\theta_{m-1}$ based on the comparison between the likelihoods $\hat L(\theta_m)$ and $\hat L(\theta_{m-1})$
@@ -233,12 +239,73 @@ PMCMC for the stochastic SIR model works in the following steps:
 
 ```{r stochSIR-pmcmc}
 # Stepwise likelihood compuation and MCMC
-simulateSIR<-function(n, SIRobj){return(list(S=S,I=I,R=R))}
-observe<-function(C_n,c_n,p){
-  return(dbinom(C_n,c_n,p,log=T))
+simulateSIR<-function(parms,starttime, endtime, init){
+  outbreak<-sim_outbreak(parms,init,c(starttime,endtime),model=SIR_stoch,sim_fn=solve_stoch)
+  SIR<-unlist(outbreak[2,]) # vector: time, S, I, R
+  return(SIR[-1])
 }
-#
-# --PMCMC implementation--
 
+
+sysresampling<-function(weight){ # systematic resampling
+  size<-length(weight)
+  weight<-weight/sum(weight) # normalise
+  cumweight<-cumsum(weight)
+  randomiser<-floor(cumweight*size+runif(1))
+  freqs<-randomiser-c(0,randomiser[-size])
+  return(unlist(sapply(1:size,function(x)rep(x,each=freqs[x]))))
+}
+
+# --PMCMC implementation--
+# SMC part
+smc<-function(parms,J){
+  beta<-parms[1]
+  tau<-parms[2]
+  p<-parms[3]
+  ns<-1:10
+  nlength<-length(ns)
+  trajs<-array(0,dim=c(nlength+1,3,J))
+  trajs[1,,]<-c(999,1,0) # x_0
+  g_n<-matrix(0,nlength,J) #g(y_n;x_n)^(j): likelihood of observation
+  
+  for(n in ns){
+    xsim<-sapply(1:J,function(j)simulateSIR(c(beta,tau),starttime=n-1,endtime=n,trajs[n,,j]))
+    trajs[n+1,,]<-xsim
+    c_n<-trajs[n,1,]-xsim[1,]
+    g_n[n,]<-sapply(c_n,observe,C_n=cases[n],p=p)
+    
+    # resample
+    logweight<-g_n[n,]
+    logweight<-logweight-logSumExp(logweight) # normalise
+    resampled_id<-sysresampling(exp(logweight)) # systematic resampling proportional to exp(logweight)
+    trajs<-trajs[,,resampled_id]
+    g_n<-g_n[,resampled_id]
+  }
+  
+  loglik_j<-colSums(g_n)
+  approxlik<-logSumExp(loglik_j)-log(J) # mean
+  logweight<-loglik_j-logSumExp(loglik_j) # normalise
+  trajsampleid<-sample(1:J,1,prob=exp(logweight))
+  trajsample<-trajs[,,trajsampleid]
+  
+  return(list(approxlik=approxlik,trajsample=trajsample))
+}
+
+# MCMC part
+Model_SMC<-function(parms,Data){
+  beta<-abs(parms[1])
+  tau<-abs(parms[2])
+  p<-interval(parms[3],0,1)
+  parms<-c(beta,tau,p)
+  
+  smcout<-smc(parms,100)
+  
+  return(list(LP=smcout$approxlik,Dev=-2*smcout$approxlik,Monitor=smcout$trajsample,yhat=NULL,parm=parms))
+}
+Data<-list(parm.names=c("beta","tau","p"),mon.names=paste0(rep(c("S","I","R"),each=11),1:11),N=1000)
+n_iter<-100
+Covar<-matrix(c(0.5,0.45,0.03,0.45,0.45,0.03,0.03,0.03,0.003),3) # Specified ad-hoc: need to use adaptive methods etc. in practice
+set.seed(2020)
+chain<-LaplacesDemon(Model_SMC,Data,Initial.Values=c(1,1,0.5),Covar=Covar,Iterations=n_iter,Thinning = 1,Status=1,Algorithm="RWM")
+chain$Summary2
 ```
 
