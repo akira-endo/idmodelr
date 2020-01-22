@@ -112,7 +112,42 @@ solve_stoch<-function(model = NULL, inits = NULL, params = NULL, times = NULL, a
   }
 }
 
-# main func for stochastic simulation
+solve_stoch_adaptivetau<-function(model = NULL, inits = NULL, params = NULL, times = NULL, as.data.frame = TRUE, ...){
+  if ("matrix" %in% class(params)) {
+    solved_stoch <- map(1:ncol(params), function(i) {
+      params_vect <- params[,i]
+      if ("matrix" %in% class(inits)) {
+        initial <- inits[, i]
+      }else{
+        initial <- inits
+      }
+      
+      solved_stoch <- simulate_adaptivetau(initial, times, model, params_vect, ...)
+      
+      if (as.data.frame) {
+        solved_stoch <- as.data.frame(solved_stoch)
+        solved_stoch <- as_tibble(solved_stoch)
+        if (ncol(params) != 1) {
+          solved_stoch$traj <- i
+        }
+      }
+      return(solved_stoch)
+    })
+    
+    if (as.data.frame) {
+      solved_stoch <- do.call(bind_rows, solved_stoch)
+    }
+  }else{
+    solved_stoch <- simulate_GA(inits, times, model, params, ...)
+    
+    if (as.data.frame) {
+      solved_stoch <- as.data.frame(solved_stoch)
+      solved_stoch <- as_tibble(solved_stoch)
+    }
+  }
+}
+
+# main funcs for stochastic simulation
 simulate_GA<-function(inits, times, stochmodel, params_vect, ...){
   # Output matrix
   out<-matrix(0,length(times),length(inits))
@@ -146,4 +181,20 @@ simulate_GA<-function(inits, times, stochmodel, params_vect, ...){
     out[n,]<-xnow
   }
   cbind(time=times,out)
+}
+
+simulate_adaptivetau<-function(inits, times, stochmodel, params_vect, ...){
+  inputs<-list(params=params_vect,model=stochmodel,times=times)
+  dims<-length(inits)
+  transitions<-apply(expand.grid(1:dims,1:dims),1,function(idx)c(rbind(idx,c(1,-1))))
+  transitions<-adaptivetau::ssa.maketrans(dims,transitions)
+  maxTauFunc<-function(currsates,inputs,t){ # make sure the values are returned at 'times'
+    times<-inputs$times
+    nexttime<-times[which.max(t<times)] # the next earliest element in 'times'
+    return(nexttime-t)
+  }
+  rateFunc_adaptivetau<-function(currstates,inputs,t){
+    c(inputs$model(t,currstates,inputs$params)$rates)
+  }
+  adaptivetau::ssa.adaptivetau(inits,transitions,rateFunc_adaptivetau,inputs,tail(times,1),tl.params = list(epsilon=0.1))
 }

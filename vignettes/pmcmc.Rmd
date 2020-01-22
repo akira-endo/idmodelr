@@ -240,7 +240,7 @@ PMCMC for the stochastic SIR model works in the following steps:
 ```{r stochSIR-pmcmc}
 # Stepwise likelihood compuation and MCMC
 simulateSIR<-function(parms,starttime, endtime, init){
-  outbreak<-sim_outbreak(parms,init,c(starttime,endtime),model=SIR_stoch,sim_fn=solve_stoch)
+  outbreak<-sim_outbreak(parms,init,c(starttime,endtime),model=SIR_stoch,sim_fn=solve_stoch_adaptivetau)
   SIR<-unlist(outbreak[2,]) # vector: time, S, I, R
   return(SIR[-1])
 }
