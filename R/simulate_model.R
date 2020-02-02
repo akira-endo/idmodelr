@@ -1,8 +1,7 @@
 #' A Function to Simulate a Model from a Generic Simulation Function, with Pre and Post Processing
 #' @inheritParams aggregate_model
 #' @param model A model compatible with your \code{sim_fn}.
-#' @param sim_fn A generic simulation function, with the first argument as the model object,
-#' a \code{params} argument, and a \code{as.data.frame} argument.
+#' @param sim_fn A simulation function, whose inputs/outputs are compatible with deSolve::lsoda, i.e. (inits, times, model, params)
 #' @param inits A dataframe of initial conditions, optionally a named vector can be used.
 #' @param params A dataframe of parameters, with each parameter as a variable. Optionally a named vector can be used.
 #' @param times A vector of the times to sample the model for, from a starting time to a final time.
@@ -36,8 +35,8 @@
 #'parameters <- data.frame(beta = beta)
 #'inits <- data.frame(S = S_0, I = I_0)
 #'
-#'SI_sim <- simulate_model(model = SI_ode, sim_fn = solve_ode, inits, parameters, times)
-simulate_model <- function(model, sim_fn, inits = NULL, params = NULL, times = NULL,
+#'SI_sim <- simulate_model(model = SI_ode, sim_fn = deSolve::lsoda, inits, parameters, times)
+simulate_model <- function(model, sim_fn = deSolve::lsoda, inits = NULL, params = NULL, times = NULL,
                            as_tibble = TRUE, by_row = FALSE, aggregate_to = NULL, compartments = NULL,
                            strat = NULL, hold_out_var = NULL, new_var = "incidence",
                            total_pop = TRUE, summary_var = FALSE, verbose = FALSE, ...) {
@@ -72,7 +71,7 @@ simulate_model <- function(model, sim_fn, inits = NULL, params = NULL, times = N
 
     if (is.null(times)) {
       sim <- map_df(1:ncol(params_as_matrix), function(i) {
-        traj <- sim_fn(model, inits = inits_as_matrix[, i], params = params_as_matrix[, i], as.data.frame = as_tibble, ...)
+        traj <- solvemodel(model, sim_fn, inits = inits_as_matrix[, i], params = params_as_matrix[, i], as.data.frame = as_tibble, ...)
         traj$traj <- i
 
         if (verbose) {
@@ -82,7 +81,7 @@ simulate_model <- function(model, sim_fn, inits = NULL, params = NULL, times = N
       })
     }else {
       sim <- map_df(1:ncol(params_as_matrix), function(i) {
-        traj <- sim_fn(model, inits = inits_as_matrix[,i],
+        traj <- solvemodel(model, sim_fn, inits = inits_as_matrix[,i],
                        params = params_as_matrix[,i],
                        as.data.frame = as_tibble,
                        times = times, ...)
@@ -96,9 +95,9 @@ simulate_model <- function(model, sim_fn, inits = NULL, params = NULL, times = N
     }
   }else{
     if (is.null(times)) {
-      sim <- sim_fn(model, inits = inits_as_matrix, params = params_as_matrix, as.data.frame = as_tibble, ...)
+      sim <- solvemodel(model, sim_fn, inits = inits_as_matrix, params = params_as_matrix, as.data.frame = as_tibble, ...)
     }else {
-      sim <- sim_fn(model, inits = inits_as_matrix, params = params_as_matrix, times = times, as.data.frame = as_tibble, ...)
+      sim <- solvemodel(model, sim_fn, inits = inits_as_matrix, params = params_as_matrix, times = times, as.data.frame = as_tibble, ...)
     }
   }
 

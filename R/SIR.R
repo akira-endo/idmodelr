@@ -66,6 +66,20 @@ SIR_stoch <- function(t, x, params) {
     list(rates=rates)
   })
 }
+Rcpp::cppFunction('
+  List SIR_stoch_c(double t, arma::vec x, arma::vec params){
+    double beta=params(0);
+    double tau=params(1);
+    double S=x(0);
+    double I=x(1);
+    double R=x(2);
+    double N=S+I+R;
+    arma::mat ratemat=arma::zeros<arma::mat>(3,3);
+    ratemat(1,0)=beta*S*I/N;
+    ratemat(2,1)=tau*I;
+    return(Rcpp::List::create(Named("rates")=ratemat));
+  }
+                                 ', depends="RcppArmadillo")
 
 #' Susceptible-Infected-Recovered Model with Simple Demographics
 #'

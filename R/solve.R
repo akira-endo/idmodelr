@@ -38,10 +38,10 @@
 #'solve_ode(model = SI_ode, inits, parameters, times, as.data.frame = TRUE)
 
 
-solve_ode <- function(model = NULL, inits = NULL, params = NULL, times = NULL, as.data.frame = TRUE, ...) {
+solvemodel <- function(model = NULL, sim_fn, inits = NULL, params = NULL, times = NULL, as.data.frame = TRUE, ...) {
 
   if ("matrix" %in% class(params)) {
-    solved_ode <- map(1:ncol(params), function(i) {
+    solved <- map(1:ncol(params), function(i) {
       params_vect <- params[,i]
       if ("matrix" %in% class(inits)) {
         initial <- inits[, i]
@@ -49,71 +49,40 @@ solve_ode <- function(model = NULL, inits = NULL, params = NULL, times = NULL, a
         initial <- inits
       }
 
-      solved_ode <- deSolve::lsoda(initial, times, model, params_vect, ...)
+      solved <- sim_fn(initial, times, model, params_vect, ...)
 
       if (as.data.frame) {
-        solved_ode <- as.data.frame(solved_ode)
-        solved_ode <- as_tibble(solved_ode)
+        solved <- as.data.frame(solved)
+        solved <- as_tibble(solved)
         if (ncol(params) != 1) {
-          solved_ode$traj <- i
+          solved$traj <- i
         }
       }
-      return(solved_ode)
+      return(solved)
     })
 
     if (as.data.frame) {
-      solved_ode <- do.call(bind_rows, solved_ode)
+      solved <- do.call(bind_rows, solved)
       }
   }else{
-    solved_ode <- deSolve::lsoda(inits, times, model, params, ...)
+    solved <- sim_fn(inits, times, model, params, ...)
 
     if (as.data.frame) {
-      solved_ode <- as.data.frame(solved_ode)
-      solved_ode <- as_tibble(solved_ode)
+      solved <- as.data.frame(solved)
+      solved <- as_tibble(solved)
     }
   }
 
-  return(solved_ode)
+  return(solved)
 }
 
-# solve wrapper for stochastic model
-solve_stoch<-function(model = NULL, inits = NULL, params = NULL, times = NULL, as.data.frame = TRUE, ...){
-  if ("matrix" %in% class(params)) {
-    solved_stoch <- map(1:ncol(params), function(i) {
-      params_vect <- params[,i]
-      if ("matrix" %in% class(inits)) {
-        initial <- inits[, i]
-      }else{
-        initial <- inits
-      }
-      
-      solved_stoch <- simulate_GA(initial, times, model, params_vect, ...)
-      
-      if (as.data.frame) {
-        solved_stoch <- as.data.frame(solved_stoch)
-        solved_stoch <- as_tibble(solved_stoch)
-        if (ncol(params) != 1) {
-          solved_stoch$traj <- i
-        }
-      }
-      return(solved_stoch)
-    })
-    
-    if (as.data.frame) {
-      solved_stoch <- do.call(bind_rows, solved_stoch)
-    }
-  }else{
-    solved_stoch <- simulate_GA(inits, times, model, params, ...)
-    
-    if (as.data.frame) {
-      solved_stoch <- as.data.frame(solved_stoch)
-      solved_stoch <- as_tibble(solved_stoch)
-    }
-  }
-}
 
 # main func for stochastic simulation
-simulate_GA<-function(inits, times, stochmodel, params_vect, ...){
+simulate_deSolve <- function(initial, times, model, params_vect, ...) {
+  deSolve::lsoda(initial, times, model, params_vect, ...)
+}
+
+simulate_GA<-function(inits, times, model, params_vect, ...){
   # Output matrix
   out<-matrix(0,length(times),length(inits))
   rownames(out)=times
@@ -123,9 +92,9 @@ simulate_GA<-function(inits, times, stochmodel, params_vect, ...){
   # Initialisation
   tnow<-times[1]
   xnow<-inits
-  rates<-stochmodel(tnow,xnow,params_vect)$rates
-  tnext<-tnow+suppressWarnings(rexp(1,sum(rates))) # time of the next transition
-  if(is.nan(tnext))tnext=Inf
+  rates<-model(tnow,xnow,params_vect)$rates
+  if(sum(rates)==0){tnext=Inf
+  }else{tnext<-tnow+rexp(1,sum(rates))} # time of the next transition
   
   for(n in 1:length(times)){
     tstep<-times[n]
@@ -139,9 +108,9 @@ simulate_GA<-function(inits, times, stochmodel, params_vect, ...){
       xnow[trans_to]<-xnow[trans_to]+1
       
       # update tnext
-      rates<-stochmodel(tnow,xnow,params_vect)$rates
-      tnext<-tnow+suppressWarnings(rexp(1,sum(rates))) # time of the next transition
-      if(is.nan(tnext))tnext=Inf
+      rates<-model(tnow,xnow,params_vect)$rates
+      if(sum(rates)==0){tnext=Inf
+      }else{tnext<-tnow+rexp(1,sum(rates))} # time of the next transition
     }
     out[n,]<-xnow
   }

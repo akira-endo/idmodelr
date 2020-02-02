@@ -15,8 +15,11 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup}
+```{r setup, show=F}
 library(idmodelr)
+source("../R/solve.R")
+source("../R/simulate_model.R")
+library(purrr);library(tibble);library(dplyr);library(matrixStats)
 ```
 
 ## Introduction
@@ -57,7 +60,7 @@ SIR model runs on continuous time and we can get the state of each compartment a
 
 ```{r deterministicSIR,tidy=TRUE,fig.width=5}
 # deterministic SIR model by {idmodelr}
-sim_outbreak<-function(betatau,init,times,model=SIR_ode,sim_fn=solve_ode){
+sim_outbreak<-function(betatau,init,times,model=SIR_ode,sim_fn=simulate_deSolve){
   parameters <- data.frame(
     beta = betatau[1],
     tau = betatau[2]
@@ -201,12 +204,10 @@ $$
 
 The output of the Gillespie algorithm,$\{S(t_k),I(t_k),R(t_k)\}$ for $k=1,2,...$, can then be translated into a continuous-time epidemic time series. {idmodelr} supports epidemic simulations with the Stochastic SIR model.
 ```{r stochasticSIR, tidy=TRUE, fig.width=5}
-source("../R/SIR.R")
-source("../R/solve.R")
-library(purrr);library(tibble);library(dplyr)
+#source("../R/SIR.R")
 set.seed(2020)
 # Stochastic SIR simulation by {idmodelr}
-traj<-sim_outbreak(c(3,1),c(999,1,0),times,model=SIR_stoch,sim_fn=solve_stoch)
+traj<-sim_outbreak(c(3,1),c(999,1,0),times,model=SIR_stoch_c,sim_fn=simulate_GA)
 # plot the epicurve
 plot_model(traj, facet = F)
 ```
@@ -240,7 +241,7 @@ PMCMC for the stochastic SIR model works in the following steps:
 ```{r stochSIR-pmcmc}
 # Stepwise likelihood compuation and MCMC
 simulateSIR<-function(parms,starttime, endtime, init){
-  outbreak<-sim_outbreak(parms,init,c(starttime,endtime),model=SIR_stoch,sim_fn=solve_stoch)
+  outbreak<-sim_outbreak(parms,init,c(starttime,endtime),model=SIR_stoch_c,sim_fn=simulate_GA)
   SIR<-unlist(outbreak[2,]) # vector: time, S, I, R
   return(SIR[-1])
 }
@@ -284,6 +285,7 @@ smc<-function(parms,J){
   loglik_j<-colSums(g_n)
   approxlik<-logSumExp(loglik_j)-log(J) # mean
   logweight<-loglik_j-logSumExp(loglik_j) # normalise
+  if(is.na(sum(logweight)))logweight=numeric(J)
   trajsampleid<-sample(1:J,1,prob=exp(logweight))
   trajsample<-trajs[,,trajsampleid]
   
@@ -302,7 +304,7 @@ Model_SMC<-function(parms,Data){
   return(list(LP=smcout$approxlik,Dev=-2*smcout$approxlik,Monitor=smcout$trajsample,yhat=NULL,parm=parms))
 }
 Data<-list(parm.names=c("beta","tau","p"),mon.names=paste0(rep(c("S","I","R"),each=11),1:11),N=1000)
-n_iter<-100
+n_iter<-5000
 Covar<-matrix(c(0.5,0.45,0.03,0.45,0.45,0.03,0.03,0.03,0.003),3) # Specified ad-hoc: need to use adaptive methods etc. in practice
 set.seed(2020)
 chain<-LaplacesDemon(Model_SMC,Data,Initial.Values=c(1,1,0.5),Covar=Covar,Iterations=n_iter,Thinning = 1,Status=1,Algorithm="RWM")
